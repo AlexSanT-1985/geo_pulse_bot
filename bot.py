@@ -4,60 +4,49 @@ import datetime
 import logging
 import feedparser
 import asyncio
+import nest_asyncio
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-# --- Константы ---
+# --- Настройки ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 TIMEZONE = "Europe/Warsaw"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-# --- Логирование ---
+# Включить логирование
 logging.basicConfig(level=logging.INFO)
 
 # --- Получить курс USD/PLN ---
 def get_usd_pln():
     try:
-        r = requests.get("https://api.exchangerate.host/latest?base=USD&symbols=PLN", timeout=10)
+        r = requests.get("https://api.exchangerate.host/latest?base=USD&symbols=PLN")
         return round(r.json()["rates"]["PLN"], 4)
-    except Exception as e:
-        logging.error(f"USD/PLN error: {e}")
+    except:
         return "н/д"
 
 # --- Получить цену нефти Brent ---
 def get_brent():
     try:
-        r = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/CL=F?range=1d&interval=1h", headers=HEADERS, timeout=10)
+        r = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/CL=F?range=1d&interval=1h")
         prices = r.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-        last = next(x for x in reversed(prices) if x is not None)
+        last = next(x for x in reversed(prices) if x)
         return round(last, 2)
-    except Exception as e:
-        logging.error(f"Brent error: {e}")
+    except:
         return "н/д"
 
-# --- Получить цены на металлы ---
+# --- Получить цену золота и серебра ---
 def get_metals():
-    prices = {}
-    symbols = {
-        "gold": "GC=F",
-        "silver": "SI=F",
-        "platinum": "PL=F"
-    }
-    for name, symbol in symbols.items():
-        try:
-            r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=1h", headers=HEADERS, timeout=10)
-            data = r.json()
-            closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-            last_price = next(x for x in reversed(closes) if x is not None)
-            prices[name] = round(last_price, 2)
-        except Exception as e:
-            logging.error(f"[{name.upper()}] metals error: {e}")
-            prices[name] = "н/д"
-    return prices
+    try:
+        r = requests.get("https://api.metals.live/v1/spot")
+        data = r.json()
+        gold = next((x['gold'] for x in data if 'gold' in x), None)
+        silver = next((x['silver'] for x in data if 'silver' in x), None)
+        return round(gold, 2), round(silver, 2)
+    except:
+        return "н/д", "н/д"
 
 # --- Получить экстренные заголовки ---
 def get_headlines():
@@ -69,22 +58,20 @@ def get_headlines():
             alerts.append(f"• {entry.title}")
     return alerts
 
-# --- Сформировать текст сводки ---
+# --- Сформировать сводку ---
 def generate_briefing():
     usd_pln = get_usd_pln()
     brent = get_brent()
-    metals = get_metals()
+    gold, silver = get_metals()
     alerts = get_headlines()
 
     text = (
         f"📡 *Геополитическая сводка — {datetime.date.today()}*\n\n"
         f"💱 *Финансовые данные*\n"
         f"- USD/PLN: *{usd_pln}* PLN\n"
-        f"- Brent: *{brent}* USD\n\n"
-        f"📈 *Драгоценные металлы* _(за унцию)_\n"
-        f"- Золото: *{metals['gold']}* USD\n"
-        f"- Серебро: *{metals['silver']}* USD\n"
-        f"- Платина: *{metals['platinum']}* USD\n\n"
+        f"- Brent: *{brent}* USD\n"
+        f"- Gold: *{gold}* USD/oz\n"
+        f"- Silver: *{silver}* USD/oz\n\n"
         f"🌍 *Новости Ближнего Востока*\n"
     )
 
@@ -96,7 +83,7 @@ def generate_briefing():
     text += "\n\n_Обновлено автоматически ботом_"
     return text
 
-# --- Отправка сообщений ---
+# --- Асинхронные действия ---
 async def send_briefing(context: ContextTypes.DEFAULT_TYPE):
     text = generate_briefing()
     await context.bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
@@ -111,14 +98,14 @@ async def update_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = generate_briefing()
     await update.message.reply_text(text=text, parse_mode="Markdown")
 
-# --- Главная функция ---
+# --- Главный запуск ---
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     # Планировщик
     scheduler = AsyncIOScheduler(timezone=TIMEZONE)
-    scheduler.add_job(lambda: send_briefing(app), CronTrigger(hour=9, minute=0))
-    scheduler.add_job(lambda: emergency_check(app), CronTrigger(minute="*/30"))
+    scheduler.add_job(send_briefing, CronTrigger(hour=9, minute=0))
+    scheduler.add_job(emergency_check, CronTrigger(minute="*/30"))
     scheduler.start()
 
     # Команда /update
@@ -129,4 +116,5 @@ async def main():
 
 # --- Запуск ---
 if __name__ == "__main__":
-    asyncio.run(main())
+    nest_asyncio.apply()
+    asyncio.get_event_loop().run_until_complete(main())
