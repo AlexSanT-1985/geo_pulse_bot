@@ -11,7 +11,7 @@ import os
 
 nest_asyncio.apply()
 
-TOKEN = os.getenv("BOT_TOKEN")  # Или замени на строку токена вручную
+TOKEN = "7918379447:AAGtVZXrnC5FJi8S3wPeXCyl_xaiFPgoVzg"  # ТВОЙ ТОКЕН
 CHAT_ID = os.getenv("CHAT_ID")  # Или замени вручную, если знаешь chat_id
 TIMEZONE = "Europe/Warsaw"
 
