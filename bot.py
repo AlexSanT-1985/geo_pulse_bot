@@ -85,6 +85,8 @@ async def main():
 async def chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Chat ID: {update.effective_chat.id}")
 
+app.add_handler(CommandHandler("id", chat_id))
+
 
 if __name__ == "__main__":
     import nest_asyncio
