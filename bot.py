@@ -12,7 +12,7 @@ import nest_asyncio
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = "7918379447:AAGtVZXrnC5FJi8S3wPeXCyl_xaiFPgoVzg"
-CHAT_ID = -1002246849121  # замените на свой chat_id
+CHAT_ID = 754867580  # замените на свой chat_id
 
 # --- Аналитическая сводка: источники ---
 NEWS_SOURCES = {
@@ -53,4 +53,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def briefing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary = await fetch_news_summary()
     today = datetime.now().strftime("%d.%m.%Y")
-    await update.message.re
+    await update.message.reply_text(f"📊 Ежедневная сводка ({today}):\n\n{summary}")
+
+async def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("briefing", briefing))
+
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(lambda: asyncio.create_task(send_briefing(app)), CronTrigger(hour=9, minute=0))
+    scheduler.start()
+
+    logging.info("Бот запущен")
+    await app.run_polling()
+
+if __name__ == "__main__":
+    nest_asyncio.apply()
+    asyncio.run(main())
