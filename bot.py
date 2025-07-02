@@ -4,7 +4,6 @@ import datetime
 import logging
 import feedparser
 import asyncio
-import nest_asyncio
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -16,10 +15,10 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 TIMEZONE = "Europe/Warsaw"
 
-# Включить логирование
+# Логирование
 logging.basicConfig(level=logging.INFO)
 
-# --- Получить курс USD/PLN ---
+# --- Финансовые данные ---
 def get_usd_pln():
     try:
         r = requests.get("https://api.exchangerate.host/latest?base=USD&symbols=PLN")
@@ -27,7 +26,6 @@ def get_usd_pln():
     except:
         return "н/д"
 
-# --- Получить цену нефти Brent ---
 def get_brent():
     try:
         r = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/CL=F?range=1d&interval=1h")
@@ -37,18 +35,17 @@ def get_brent():
     except:
         return "н/д"
 
-# --- Получить цену золота и серебра ---
 def get_metals():
     try:
         r = requests.get("https://api.metals.live/v1/spot")
         data = r.json()
-        gold = next((x['gold'] for x in data if 'gold' in x), None)
-        silver = next((x['silver'] for x in data if 'silver' in x), None)
-        return round(gold, 2), round(silver, 2)
+        gold = next(item for item in data if "gold" in item).get("gold", "н/д")
+        silver = next(item for item in data if "silver" in item).get("silver", "н/д")
+        return float(gold), float(silver)
     except:
         return "н/д", "н/д"
 
-# --- Получить экстренные заголовки ---
+# --- Новости ---
 def get_headlines():
     feed = feedparser.parse("https://www.aljazeera.com/xml/rss/all.xml")
     keywords = ["Iran", "Israel", "missile", "Hezbollah", "attack", "strike", "Hormuz", "explosion", "military"]
@@ -58,7 +55,7 @@ def get_headlines():
             alerts.append(f"• {entry.title}")
     return alerts
 
-# --- Сформировать сводку ---
+# --- Сводка ---
 def generate_briefing():
     usd_pln = get_usd_pln()
     brent = get_brent()
@@ -70,8 +67,8 @@ def generate_briefing():
         f"💱 *Финансовые данные*\n"
         f"- USD/PLN: *{usd_pln}* PLN\n"
         f"- Brent: *{brent}* USD\n"
-        f"- Gold: *{gold}* USD/oz\n"
-        f"- Silver: *{silver}* USD/oz\n\n"
+        f"- Gold: *{gold}* USD\n"
+        f"- Silver: *{silver}* USD\n\n"
         f"🌍 *Новости Ближнего Востока*\n"
     )
 
@@ -83,16 +80,16 @@ def generate_briefing():
     text += "\n\n_Обновлено автоматически ботом_"
     return text
 
-# --- Асинхронные действия ---
-async def send_briefing(context: ContextTypes.DEFAULT_TYPE):
+# --- Асинхронные задачи ---
+async def send_briefing(bot):
     text = generate_briefing()
-    await context.bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
+    await bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
 
-async def emergency_check(context: ContextTypes.DEFAULT_TYPE):
+async def emergency_check(bot):
     alerts = get_headlines()
     if alerts:
         text = "🚨 *Экстренная сводка!*\n\n" + "\n".join(alerts)
-        await context.bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
+        await bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
 
 async def update_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = generate_briefing()
@@ -102,19 +99,17 @@ async def update_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Планировщик
     scheduler = AsyncIOScheduler(timezone=TIMEZONE)
-    scheduler.add_job(send_briefing, CronTrigger(hour=9, minute=0))
-    scheduler.add_job(emergency_check, CronTrigger(minute="*/30"))
+    scheduler.add_job(lambda: asyncio.create_task(send_briefing(app.bot)), CronTrigger(hour=9, minute=0))
+    scheduler.add_job(lambda: asyncio.create_task(emergency_check(app.bot)), CronTrigger(minute="*/30"))
     scheduler.start()
 
-    # Команда /update
     app.add_handler(CommandHandler("update", update_command))
 
-    # Запуск
     await app.run_polling()
 
 # --- Запуск ---
 if __name__ == "__main__":
+    import nest_asyncio
     nest_asyncio.apply()
     asyncio.get_event_loop().run_until_complete(main())
