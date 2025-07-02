@@ -101,4 +101,8 @@ async def main():
 
 # --- Запуск ---
 if __name__ == "__main__":
-    asyncio.run(main())
+    import nest_asyncio
+    import asyncio
+
+    nest_asyncio.apply()  # позволяет повторно использовать уже запущенный event loop
+    asyncio.get_event_loop().run_until_complete(main())
