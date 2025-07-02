@@ -89,8 +89,8 @@ async def main():
 
     # Планировщик
     scheduler = AsyncIOScheduler(timezone=TIMEZONE)
-    scheduler.add_job(send_briefing, CronTrigger(hour=9, minute=0))
-    scheduler.add_job(emergency_check, CronTrigger(minute="*/30"))
+    scheduler.add_job(lambda: app.create_task(send_briefing(ContextTypes.DEFAULT_TYPE())), CronTrigger(hour=9, minute=0))
+    scheduler.add_job(lambda: app.create_task(emergency_check(ContextTypes.DEFAULT_TYPE())), CronTrigger(minute="*/30"))
     scheduler.start()
 
     # Команда /update
