@@ -1,6 +1,5 @@
-python-telegram-bot>=20.0
-apscheduler
+python-telegram-bot>=22.0
+httpx>=0.28
 feedparser
-requests
+APScheduler
 nest_asyncio
-tzlocal
